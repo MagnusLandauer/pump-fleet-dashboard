@@ -9,38 +9,58 @@ import {
   TextField,
 } from '@mui/material';
 import { useState } from 'react';
-import type { CreateWorkOrderInput } from '../../domain/store';
-import type { WorkOrderType } from '../../domain/models';
+import type {
+  CreateWorkOrderInput,
+  UpdateWorkOrderInput,
+} from '../../domain/store';
+import type {
+  WorkOrder,
+  WorkOrderStatus,
+  WorkOrderType,
+} from '../../domain/models';
 
-interface WorkOrderFormProps {
-  open: boolean;
+interface CreateMode {
+  mode: 'create';
   pumpId: string;
-  onClose: () => void;
   onSubmit: (input: CreateWorkOrderInput) => void;
 }
+
+interface EditMode {
+  mode: 'edit';
+  workOrder: WorkOrder;
+  onSubmit: (id: string, input: UpdateWorkOrderInput) => void;
+}
+
+type WorkOrderFormProps = (CreateMode | EditMode) & {
+  open: boolean;
+  onClose: () => void;
+};
 
 function defaultDueDate(): string {
   const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   return d.toISOString().slice(0, 10);
 }
 
-export function WorkOrderForm({ open, pumpId, onClose, onSubmit }: WorkOrderFormProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [type, setType] = useState<WorkOrderType>('corrective');
-  const [dueDate, setDueDate] = useState(defaultDueDate());
+function toDateInput(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export function WorkOrderForm(props: WorkOrderFormProps) {
+  const { open, onClose } = props;
+  const isEdit = props.mode === 'edit';
+  const initial = props.mode === 'edit' ? props.workOrder : null;
+
+  const [title, setTitle] = useState(() => initial?.title ?? '');
+  const [description, setDescription] = useState(() => initial?.description ?? '');
+  const [type, setType] = useState<WorkOrderType>(() => initial?.type ?? 'corrective');
+  const [status, setStatus] = useState<WorkOrderStatus>(() => initial?.status ?? 'open');
+  const [dueDate, setDueDate] = useState(() =>
+    initial ? toDateInput(initial.dueDate) : defaultDueDate(),
+  );
   const [titleError, setTitleError] = useState('');
 
-  const reset = () => {
-    setTitle('');
-    setDescription('');
-    setType('corrective');
-    setDueDate(defaultDueDate());
-    setTitleError('');
-  };
-
   const handleClose = () => {
-    reset();
+    setTitleError('');
     onClose();
   };
 
@@ -50,21 +70,33 @@ export function WorkOrderForm({ open, pumpId, onClose, onSubmit }: WorkOrderForm
       setTitleError('Title is required');
       return;
     }
-    onSubmit({
-      pumpId,
-      title: title.trim(),
-      description: description.trim(),
-      type,
-      dueDate: new Date(dueDate),
-    });
-    reset();
+    if (props.mode === 'edit') {
+      props.onSubmit(props.workOrder.id, {
+        title: title.trim(),
+        description: description.trim(),
+        type,
+        status,
+        dueDate: new Date(dueDate),
+      });
+    } else {
+      props.onSubmit({
+        pumpId: props.pumpId,
+        title: title.trim(),
+        description: description.trim(),
+        type,
+        dueDate: new Date(dueDate),
+      });
+    }
     onClose();
   };
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <form onSubmit={handleSubmit} aria-label="create-work-order-form">
-        <DialogTitle>Create Work Order</DialogTitle>
+      <form
+        onSubmit={handleSubmit}
+        aria-label={isEdit ? 'edit-work-order-form' : 'create-work-order-form'}
+      >
+        <DialogTitle>{isEdit ? 'Edit Work Order' : 'Create Work Order'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
@@ -97,6 +129,20 @@ export function WorkOrderForm({ open, pumpId, onClose, onSubmit }: WorkOrderForm
               <MenuItem value="corrective">Corrective</MenuItem>
               <MenuItem value="planned">Planned</MenuItem>
             </TextField>
+            {isEdit && (
+              <TextField
+                label="Status"
+                select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as WorkOrderStatus)}
+                slotProps={{ htmlInput: { 'aria-label': 'wo-status' } }}
+              >
+                <MenuItem value="open">Open</MenuItem>
+                <MenuItem value="in_progress">In progress</MenuItem>
+                <MenuItem value="completed">Completed</MenuItem>
+                <MenuItem value="overdue">Overdue</MenuItem>
+              </TextField>
+            )}
             <TextField
               label="Due Date"
               type="date"
@@ -112,7 +158,7 @@ export function WorkOrderForm({ open, pumpId, onClose, onSubmit }: WorkOrderForm
         <DialogActions>
           <Button onClick={handleClose}>Cancel</Button>
           <Button type="submit" variant="contained">
-            Create
+            {isEdit ? 'Save' : 'Create'}
           </Button>
         </DialogActions>
       </form>

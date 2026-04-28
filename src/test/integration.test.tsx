@@ -53,6 +53,58 @@ describe('Fleet integration', () => {
     expect(await screen.findByText('New inspection')).toBeTruthy();
   });
 
+  it('edits an existing work order', async () => {
+    renderApp(['/pump/pump-001']);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Alpha Centrifuge' }),
+    ).toBeTruthy();
+
+    const row = await screen.findByTestId('work-order-wo-0001');
+    await userEvent.click(within(row).getByRole('button', { name: /edit-/ }));
+
+    const title = await screen.findByLabelText('wo-title');
+    await userEvent.clear(title);
+    await userEvent.type(title, 'Replace inlet filter v2');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Replace inlet filter v2')).toBeTruthy();
+    expect(screen.queryByText('Replace inlet filter')).toBeNull();
+  });
+
+  it('deletes a work order through the confirm dialog', async () => {
+    renderApp(['/pump/pump-001']);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Alpha Centrifuge' }),
+    ).toBeTruthy();
+
+    const row = await screen.findByTestId('work-order-wo-0001');
+    await userEvent.click(within(row).getByRole('button', { name: /delete-/ }));
+
+    await screen.findByText(/will be permanently removed/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(screen.queryByTestId('work-order-wo-0001')).toBeNull();
+  });
+
+  it('starts and completes a work order from the row actions', async () => {
+    renderApp(['/pump/pump-001']);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Alpha Centrifuge' }),
+    ).toBeTruthy();
+
+    const row = await screen.findByTestId('work-order-wo-0001');
+    await userEvent.click(within(row).getByRole('button', { name: /begin-/ }));
+
+    const inProgressRow = await screen.findByTestId('work-order-wo-0001');
+    expect(within(inProgressRow).getByText(/in progress/i)).toBeTruthy();
+    expect(within(inProgressRow).queryByRole('button', { name: /edit-/ })).toBeNull();
+    expect(within(inProgressRow).queryByRole('button', { name: /delete-/ })).toBeNull();
+
+    await userEvent.click(within(inProgressRow).getByRole('button', { name: /complete-/ }));
+    const finalRow = await screen.findByTestId('work-order-wo-0001');
+    expect(within(finalRow).getByText(/completed/i)).toBeTruthy();
+  });
+
   it('shows pump-not-found on unknown id', async () => {
     renderApp(['/pump/does-not-exist']);
     expect(await screen.findByText(/pump not found/i)).toBeTruthy();

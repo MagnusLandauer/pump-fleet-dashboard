@@ -110,6 +110,103 @@ describe('FleetStore', () => {
     expect(store.getWorkOrders('pump-001')).toContainEqual(wo);
   });
 
+  it('updates a work order and recomputes status from due date', () => {
+    const store = freshStore();
+    const wo = store.createWorkOrder({
+      pumpId: 'pump-001',
+      title: 'Initial',
+      description: '',
+      type: 'corrective',
+      dueDate: new Date(NOW.getTime() + 86400000),
+    });
+    expect(wo.status).toEqual('open');
+
+    const updated = store.updateWorkOrder(wo.id, {
+      title: 'Renamed',
+      description: 'updated',
+      type: 'planned',
+      status: 'open',
+      dueDate: new Date(NOW.getTime() - 1000),
+    });
+    expect(updated?.title).toEqual('Renamed');
+    expect(updated?.type).toEqual('planned');
+    expect(updated?.status).toEqual('overdue');
+  });
+
+  it('honors explicit completed status when updating', () => {
+    const store = freshStore();
+    const wo = store.createWorkOrder({
+      pumpId: 'pump-001',
+      title: 'Initial',
+      description: '',
+      type: 'corrective',
+      dueDate: new Date(NOW.getTime() + 86400000),
+    });
+    const updated = store.updateWorkOrder(wo.id, {
+      title: wo.title,
+      description: wo.description,
+      type: wo.type,
+      status: 'completed',
+      dueDate: wo.dueDate,
+    });
+    expect(updated?.status).toEqual('completed');
+    expect(updated?.completedAt).not.toBeNull();
+  });
+
+  it('returns undefined when updating an unknown work order', () => {
+    const store = freshStore();
+    const result = store.updateWorkOrder('does-not-exist', {
+      title: 'x',
+      description: '',
+      type: 'corrective',
+      status: 'open',
+      dueDate: new Date(NOW.getTime() + 86400000),
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it('deletes a work order', () => {
+    const store = freshStore();
+    const wo = store.createWorkOrder({
+      pumpId: 'pump-001',
+      title: 'To delete',
+      description: '',
+      type: 'corrective',
+      dueDate: new Date(NOW.getTime() + 86400000),
+    });
+    expect(store.deleteWorkOrder(wo.id)).toBe(true);
+    expect(store.getWorkOrders('pump-001').find((w) => w.id === wo.id)).toBeUndefined();
+  });
+
+  it('returns false when deleting an unknown work order', () => {
+    const store = freshStore();
+    expect(store.deleteWorkOrder('does-not-exist')).toBe(false);
+  });
+
+  it('notifies subscribers on update and delete', () => {
+    const store = freshStore();
+    const wo = store.createWorkOrder({
+      pumpId: 'pump-001',
+      title: 'To touch',
+      description: '',
+      type: 'corrective',
+      dueDate: new Date(NOW.getTime() + 86400000),
+    });
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    store.updateWorkOrder(wo.id, {
+      title: 'touched',
+      description: '',
+      type: 'corrective',
+      status: 'open',
+      dueDate: wo.dueDate,
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+    store.deleteWorkOrder(wo.id);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
   it('lists work orders filtered by pump id', () => {
     const store = freshStore();
     const all = store.getWorkOrders();

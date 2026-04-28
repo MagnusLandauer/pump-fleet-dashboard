@@ -9,6 +9,10 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircleOutlined';
+import DeleteIcon from '@mui/icons-material/DeleteOutlined';
+import EditIcon from '@mui/icons-material/EditOutlined';
+import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
 import { alpha } from '@mui/material/styles';
 import type { WorkOrder, WorkOrderStatus } from '../../domain/models';
 
@@ -32,9 +36,20 @@ const STATUS_LABEL: Record<WorkOrderStatus, string> = {
 interface WorkOrderListProps {
   workOrders: WorkOrder[];
   onCreate: () => void;
+  onEdit: (workOrder: WorkOrder) => void;
+  onDelete: (workOrder: WorkOrder) => void;
+  onBeginWork: (workOrder: WorkOrder) => void;
+  onComplete: (workOrder: WorkOrder) => void;
 }
 
-export function WorkOrderList({ workOrders, onCreate }: WorkOrderListProps) {
+export function WorkOrderList({
+  workOrders,
+  onCreate,
+  onEdit,
+  onDelete,
+  onBeginWork,
+  onComplete,
+}: WorkOrderListProps) {
   const sorted = [...workOrders].sort(
     (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
   );
@@ -65,6 +80,52 @@ export function WorkOrderList({ workOrders, onCreate }: WorkOrderListProps) {
                 w.status === 'overdue'
                   ? { bgcolor: (t) => alpha(t.palette.error.main, 0.1) }
                   : undefined
+              }
+              secondaryAction={
+                w.status === 'in_progress' ? (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<CheckCircleIcon />}
+                    aria-label={`complete-${w.id}`}
+                    onClick={() => onComplete(w)}
+                  >
+                    Mark as completed
+                  </Button>
+                ) : w.status === 'completed' ? null : (
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                      startIcon={<PlayArrowIcon />}
+                      aria-label={`begin-${w.id}`}
+                      onClick={() => onBeginWork(w)}
+                    >
+                      Begin work
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<EditIcon />}
+                      aria-label={`edit-${w.id}`}
+                      onClick={() => onEdit(w)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      aria-label={`delete-${w.id}`}
+                      onClick={() => onDelete(w)}
+                    >
+                      Delete
+                    </Button>
+                  </Stack>
+                )
               }
             >
               <ListItemText

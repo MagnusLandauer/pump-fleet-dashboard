@@ -4,6 +4,11 @@ import {
   Box,
   Button,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Grid,
   Stack,
   Typography,
@@ -17,7 +22,7 @@ import { TelemetryChart } from '../components/detail/TelemetryChart';
 import { TimeWindowSelector } from '../components/detail/TimeWindowSelector';
 import { WorkOrderForm } from '../components/detail/WorkOrderForm';
 import { WorkOrderList } from '../components/detail/WorkOrderList';
-import type { TimeWindow } from '../domain/models';
+import type { TimeWindow, WorkOrder } from '../domain/models';
 import { SIGNAL_ORDER } from '../domain/models';
 import { useLiveTick } from '../hooks/useLiveTick';
 import { useFleetStore, useStoreSnapshot } from '../hooks/useStore';
@@ -33,7 +38,9 @@ function PumpDetail() {
   const snapshot = useStoreSnapshot();
   const navigate = useNavigate();
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
-  const [formOpen, setFormOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<WorkOrder | null>(null);
+  const [deleting, setDeleting] = useState<WorkOrder | null>(null);
 
   const pump = store.getPump(id);
   if (!pump) {
@@ -113,17 +120,76 @@ function PumpDetail() {
 
         <WorkOrderList
           workOrders={workOrders}
-          onCreate={() => setFormOpen(true)}
+          onCreate={() => setCreateOpen(true)}
+          onEdit={(w) => setEditing(w)}
+          onDelete={(w) => setDeleting(w)}
+          onBeginWork={(w) =>
+            store.updateWorkOrder(w.id, {
+              title: w.title,
+              description: w.description,
+              type: w.type,
+              status: 'in_progress',
+              dueDate: w.dueDate,
+            })
+          }
+          onComplete={(w) =>
+            store.updateWorkOrder(w.id, {
+              title: w.title,
+              description: w.description,
+              type: w.type,
+              status: 'completed',
+              dueDate: w.dueDate,
+            })
+          }
         />
 
         <MaintenanceTable schedules={maintenance} now={snapshot.now} />
 
-        <WorkOrderForm
-          open={formOpen}
-          pumpId={pump.id}
-          onClose={() => setFormOpen(false)}
-          onSubmit={(input) => store.createWorkOrder(input)}
-        />
+        {createOpen && (
+          <WorkOrderForm
+            mode="create"
+            open
+            pumpId={pump.id}
+            onClose={() => setCreateOpen(false)}
+            onSubmit={(input) => store.createWorkOrder(input)}
+          />
+        )}
+
+        {editing && (
+          <WorkOrderForm
+            mode="edit"
+            open
+            workOrder={editing}
+            onClose={() => setEditing(null)}
+            onSubmit={(id, input) => store.updateWorkOrder(id, input)}
+          />
+        )}
+
+        <Dialog
+          open={deleting !== null}
+          onClose={() => setDeleting(null)}
+          aria-label="delete-work-order-dialog"
+        >
+          <DialogTitle>Delete work order?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              {deleting ? `"${deleting.title}" will be permanently removed.` : ''}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button
+              color="error"
+              variant="contained"
+              onClick={() => {
+                if (deleting) store.deleteWorkOrder(deleting.id);
+                setDeleting(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Stack>
     </Container>
   );

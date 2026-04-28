@@ -40,6 +40,14 @@ export interface CreateWorkOrderInput {
   dueDate: Date;
 }
 
+export interface UpdateWorkOrderInput {
+  title: string;
+  description: string;
+  type: WorkOrder['type'];
+  status: WorkOrder['status'];
+  dueDate: Date;
+}
+
 const DEFAULT_WINDOW: TimeWindow = '24h';
 const NO_TELEMETRY: TelemetryPoint[] = [];
 
@@ -220,6 +228,51 @@ export class FleetStore {
     };
     this.emit();
     return wo;
+  }
+
+  updateWorkOrder(id: string, input: UpdateWorkOrderInput): WorkOrder | undefined {
+    const now = this.state.now;
+    const existing = this.state.workOrders.find((w) => w.id === id);
+    if (!existing) return undefined;
+
+    let status: WorkOrder['status'];
+    if (input.status === 'completed' || input.status === 'in_progress') {
+      status = input.status;
+    } else {
+      status = input.dueDate.getTime() < now.getTime() ? 'overdue' : 'open';
+    }
+
+    const completedAt =
+      status === 'completed'
+        ? existing.completedAt ?? new Date(now.getTime())
+        : null;
+
+    const updated: WorkOrder = {
+      ...existing,
+      title: input.title,
+      description: input.description,
+      type: input.type,
+      status,
+      dueDate: input.dueDate,
+      completedAt,
+    };
+    this.state = {
+      ...this.state,
+      workOrders: this.state.workOrders.map((w) => (w.id === id ? updated : w)),
+    };
+    this.emit();
+    return updated;
+  }
+
+  deleteWorkOrder(id: string): boolean {
+    const exists = this.state.workOrders.some((w) => w.id === id);
+    if (!exists) return false;
+    this.state = {
+      ...this.state,
+      workOrders: this.state.workOrders.filter((w) => w.id !== id),
+    };
+    this.emit();
+    return true;
   }
 
   getMaintenance(pumpId?: string): MaintenanceSchedule[] {
