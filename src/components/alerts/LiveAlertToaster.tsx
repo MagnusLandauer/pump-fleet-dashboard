@@ -97,8 +97,9 @@ export function LiveAlertToaster() {
       spacing={1}
       sx={{
         position: 'fixed',
-        right: 16,
-        bottom: 16,
+        right: { xs: 8, sm: 16 },
+        bottom: { xs: 8, sm: 16 },
+        left: { xs: 8, sm: 'auto' },
         zIndex: (t) => t.zIndex.snackbar,
         pointerEvents: 'none',
       }}
@@ -127,31 +128,42 @@ export function LiveAlertToaster() {
               severity={isCritical ? 'error' : 'warning'}
               variant="filled"
               data-testid={`live-toast-${testIdSuffix}`}
-              sx={{ minWidth: 320 }}
-              action={
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    color="inherit"
-                    size="small"
-                    onClick={() => {
-                      navigate({
-                        to: '/pump/$id',
-                        params: { id: primary.pumpId },
-                        search: { from: 'alert' },
-                      });
-                      removeToastsForPump(primary.pumpId);
-                    }}
-                  >
-                    View pump
-                  </Button>
-                  <Button color="inherit" size="small" onClick={onClose}>
-                    Dismiss
-                  </Button>
-                </Stack>
-              }
+              sx={{
+                width: { xs: '100%', sm: 'auto' },
+                minWidth: { sm: 320 },
+                maxWidth: { sm: 480 },
+              }}
             >
               <AlertTitle>{pump?.name ?? primary.pumpId}</AlertTitle>
               {isGroup ? formatGroupBody(t.alerts) : formatAlertMessage(primary)}
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  mt: 1,
+                  justifyContent: 'flex-end',
+                  flexWrap: 'wrap',
+                  rowGap: 1,
+                }}
+              >
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    navigate({
+                      to: '/pump/$id',
+                      params: { id: primary.pumpId },
+                      search: { from: 'alert' },
+                    });
+                    removeToastsForPump(primary.pumpId);
+                  }}
+                >
+                  View pump
+                </Button>
+                <Button color="inherit" size="small" onClick={onClose}>
+                  Dismiss
+                </Button>
+              </Stack>
             </MuiAlert>
           </Snackbar>
         );
