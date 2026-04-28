@@ -2,9 +2,6 @@ import {
   Box,
   Button,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
   Paper,
   Stack,
   Typography,
@@ -70,70 +67,84 @@ export function WorkOrderList({
           <Typography variant="body2">No work orders for this pump.</Typography>
         </Box>
       ) : (
-        <List dense disablePadding>
-          {sorted.map((w, i) => (
-            <ListItem
-              key={w.id}
-              divider={i < sorted.length - 1}
-              data-testid={`work-order-${w.id}`}
-              sx={
-                w.status === 'overdue'
-                  ? { bgcolor: (t) => alpha(t.palette.error.main, 0.1) }
-                  : undefined
-              }
-              secondaryAction={
-                w.status === 'in_progress' ? (
+        <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
+          {sorted.map((w, i) => {
+            const actions =
+              w.status === 'in_progress' ? (
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="success"
+                  startIcon={<CheckCircleIcon />}
+                  aria-label={`complete-${w.id}`}
+                  onClick={() => onComplete(w)}
+                >
+                  Mark as completed
+                </Button>
+              ) : w.status === 'completed' ? null : (
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ flexWrap: 'wrap', rowGap: 1 }}
+                >
                   <Button
                     size="small"
                     variant="contained"
-                    color="success"
-                    startIcon={<CheckCircleIcon />}
-                    aria-label={`complete-${w.id}`}
-                    onClick={() => onComplete(w)}
+                    color="primary"
+                    startIcon={<PlayArrowIcon />}
+                    aria-label={`begin-${w.id}`}
+                    onClick={() => onBeginWork(w)}
                   >
-                    Mark as completed
+                    Begin work
                   </Button>
-                ) : w.status === 'completed' ? null : (
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      startIcon={<PlayArrowIcon />}
-                      aria-label={`begin-${w.id}`}
-                      onClick={() => onBeginWork(w)}
-                    >
-                      Begin work
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<EditIcon />}
-                      aria-label={`edit-${w.id}`}
-                      onClick={() => onEdit(w)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      aria-label={`delete-${w.id}`}
-                      onClick={() => onDelete(w)}
-                    >
-                      Delete
-                    </Button>
-                  </Stack>
-                )
-              }
-            >
-              <ListItemText
-                primary={
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<EditIcon />}
+                    aria-label={`edit-${w.id}`}
+                    onClick={() => onEdit(w)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    aria-label={`delete-${w.id}`}
+                    onClick={() => onDelete(w)}
+                  >
+                    Delete
+                  </Button>
+                </Stack>
+              );
+
+            return (
+              <Box
+                component="li"
+                key={w.id}
+                data-testid={`work-order-${w.id}`}
+                sx={{
+                  py: 1.25,
+                  px: 1,
+                  display: 'flex',
+                  flexDirection: { xs: 'column', md: 'row' },
+                  alignItems: { xs: 'stretch', md: 'flex-start' },
+                  gap: 1.5,
+                  borderBottom: i < sorted.length - 1 ? 1 : 0,
+                  borderColor: 'divider',
+                  bgcolor:
+                    w.status === 'overdue'
+                      ? (t) => alpha(t.palette.error.main, 0.1)
+                      : undefined,
+                  borderRadius: w.status === 'overdue' ? 1 : 0,
+                }}
+              >
+                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                   <Stack
                     direction="row"
                     spacing={1}
-                    sx={{ alignItems: 'center' }}
+                    sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}
                   >
                     <Chip
                       size="small"
@@ -143,20 +154,28 @@ export function WorkOrderList({
                     <Chip size="small" variant="outlined" label={w.type} />
                     <Typography variant="body2">{w.title}</Typography>
                   </Stack>
-                }
-                secondary={
                   <Typography
                     variant="body2"
                     color="text.secondary"
-                    sx={{ mt: 1 }}
+                    sx={{ mt: 0.75 }}
                   >
                     Due {w.dueDate.toLocaleDateString()} · {w.description}
                   </Typography>
-                }
-              />
-            </ListItem>
-          ))}
-        </List>
+                </Box>
+                {actions && (
+                  <Box
+                    sx={{
+                      flexShrink: 0,
+                      alignSelf: { xs: 'flex-start', md: 'flex-start' },
+                    }}
+                  >
+                    {actions}
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
       )}
     </Paper>
   );

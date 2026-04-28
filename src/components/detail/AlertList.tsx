@@ -2,9 +2,6 @@ import {
   Box,
   Button,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Paper,
   Stack,
@@ -146,7 +143,7 @@ export function AlertList({ alerts, now, onAcknowledge }: AlertListProps) {
         </Box>
       ) : (
         <>
-          <List dense disablePadding>
+          <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
             {visible.map((a, i) => {
               const resolved = isResolved(a);
               const acknowledged = a.acknowledgedAt != null;
@@ -162,89 +159,98 @@ export function AlertList({ alerts, now, onAcknowledge }: AlertListProps) {
               const stateProps = stateChipProps(a);
 
               return (
-                <ListItem
+                <Box
+                  component="li"
                   key={a.id}
-                  divider={i < visible.length - 1}
-                  alignItems="flex-start"
                   data-testid={`alert-${a.id}`}
-                  secondaryAction={
-                    showAckButton ? (
-                      <Tooltip title={ACK_TOOLTIP} placement="left">
-                        <Button
-                          size="small"
-                          onClick={() => onAcknowledge(a.id)}
-                          aria-label={`acknowledge-${a.id}`}
-                        >
-                          Acknowledge
-                        </Button>
-                      </Tooltip>
-                    ) : null
-                  }
+                  sx={{
+                    py: 1.25,
+                    display: 'flex',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    alignItems: { xs: 'stretch', sm: 'flex-start' },
+                    gap: 1,
+                    borderBottom: i < visible.length - 1 ? 1 : 0,
+                    borderColor: 'divider',
+                  }}
                 >
-                  <ListItemText
-                    primary={
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          rowGap: 0.5,
-                        }}
-                      >
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        rowGap: 0.5,
+                      }}
+                    >
+                      <Chip
+                        size="small"
+                        color={stateProps.color}
+                        variant={stateProps.variant}
+                        label={stateLabel(a)}
+                      />
+                      {peakedDownward && (
                         <Chip
                           size="small"
-                          color={stateProps.color}
-                          variant={stateProps.variant}
-                          label={stateLabel(a)}
+                          variant="outlined"
+                          color="error"
+                          label="Peaked at: critical"
                         />
-                        {peakedDownward && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            label="Peaked at: critical"
-                          />
-                        )}
-                        {acknowledged && !resolved && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label="Acknowledged"
-                          />
-                        )}
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {THRESHOLDS[a.signal].label}
+                      )}
+                      {acknowledged && !resolved && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label="Acknowledged"
+                        />
+                      )}
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {THRESHOLDS[a.signal].label}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatAlertMessage(a)}
+                      </Typography>
+                    </Stack>
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      sx={{
+                        mt: 0.5,
+                        color: 'text.secondary',
+                        flexWrap: 'wrap',
+                        rowGap: 0.5,
+                      }}
+                    >
+                      <Tooltip title={startedAbsolute}>
+                        <Typography variant="body2" component="span">
+                          Started {formatRelativeTime(a.startedAt, now)}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {formatAlertMessage(a)}
-                        </Typography>
-                      </Stack>
-                    }
-                    secondary={
-                      <Stack
-                        direction="row"
-                        spacing={2}
-                        component="span"
-                        sx={{ mt: 0.5, color: 'text.secondary' }}
+                      </Tooltip>
+                      <Typography variant="body2" component="span">
+                        {resolved ? 'Lasted' : 'Running'}{' '}
+                        {formatDuration(Math.max(0, durationMs))}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                  {showAckButton && (
+                    <Tooltip title={ACK_TOOLTIP} placement="left">
+                      <Button
+                        size="small"
+                        onClick={() => onAcknowledge(a.id)}
+                        aria-label={`acknowledge-${a.id}`}
+                        sx={{
+                          alignSelf: { xs: 'flex-end', sm: 'flex-start' },
+                          flexShrink: 0,
+                        }}
                       >
-                        <Tooltip title={startedAbsolute}>
-                          <span>
-                            Started {formatRelativeTime(a.startedAt, now)}
-                          </span>
-                        </Tooltip>
-                        <span>
-                          {resolved ? 'Lasted' : 'Running'}{' '}
-                          {formatDuration(Math.max(0, durationMs))}
-                        </span>
-                      </Stack>
-                    }
-                    slotProps={{ secondary: { component: 'div' } }}
-                  />
-                </ListItem>
+                        Acknowledge
+                      </Button>
+                    </Tooltip>
+                  )}
+                </Box>
               );
             })}
-          </List>
+          </Box>
           {hiddenCount > 0 && (
             <Typography
               variant="caption"
