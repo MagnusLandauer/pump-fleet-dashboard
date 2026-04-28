@@ -58,9 +58,3 @@ npm test                 # one-shot
 npm run test:watch       # watch mode
 npm run test:coverage    # v8 coverage with 80 % thresholds enforced in vite.config.ts
 ```
-
-## Deploy (GitHub Pages)
-
-A GitHub Actions workflow at `.github/workflows/deploy.yml` builds and deploys on every push to `master`. To enable: go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. The site publishes at `https://<user>.github.io/pump-fleet-dashboard/` (the base path is set in `vite.config.ts`).
-
-For a manual deploy: `npm run build` produces the static site in `dist/`.
