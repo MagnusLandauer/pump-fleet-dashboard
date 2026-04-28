@@ -1,15 +1,18 @@
 import type {
   Alert,
+  AlertEvent,
+  AlertSeverity,
   DerivedStatus,
   MaintenanceSchedule,
   Pump,
   TelemetryPoint,
+  TelemetrySignal,
   TimeWindow,
   WorkOrder,
 } from './models';
 import { TIME_WINDOWS } from './models';
-import { alertId, evaluateHistory, evaluatePoint } from './alerts/rules';
-import type { EvaluatedAlert } from './alerts/rules';
+import { evaluatePoint } from './alerts/rules';
+import type { SignalEvaluation } from './alerts/rules';
 import {
   buildMaintenanceSchedules,
   buildPumpRoster,
@@ -20,6 +23,7 @@ import {
 } from './generators/telemetry';
 
 type TelemetryCache = Map<string, Map<TimeWindow, TelemetryPoint[]>>;
+type OpenIncidentMap = Map<string, Map<TelemetrySignal, string>>;
 
 interface StoreState {
   pumps: Pump[];
@@ -31,6 +35,7 @@ interface StoreState {
 }
 
 type Listener = () => void;
+type AlertEventListener = (event: AlertEvent) => void;
 
 export interface CreateWorkOrderInput {
   pumpId: string;
@@ -51,41 +56,39 @@ export interface UpdateWorkOrderInput {
 const DEFAULT_WINDOW: TimeWindow = '24h';
 const NO_TELEMETRY: TelemetryPoint[] = [];
 
-function openAlertKey(a: Pick<EvaluatedAlert, 'pumpId' | 'signal' | 'severity'>): string {
-  return `${a.pumpId}:${a.signal}:${a.severity}`;
+function severityRank(s: AlertSeverity): number {
+  return s === 'critical' ? 2 : 1;
 }
 
 export class FleetStore {
   private state: StoreState;
   private listeners: Set<Listener> = new Set();
+  private alertEventListeners: Set<AlertEventListener> = new Set();
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private liveSubscribers = 0;
   private workOrderCounter = 0;
   private alertCounter = 0;
+  private openBySignal: OpenIncidentMap = new Map();
 
   constructor(now: Date = new Date()) {
     const pumps = buildPumpRoster(now);
     const telemetry: TelemetryCache = new Map();
     const alerts: Alert[] = [];
-    const openKeys = new Set<string>();
+    const alertsById = new Map<string, Alert>();
 
     for (const pump of pumps) {
       if (pump.status === 'maintenance') continue;
       const points = generateHistory(pump.id, DEFAULT_WINDOW, now);
       telemetry.set(pump.id, new Map([[DEFAULT_WINDOW, points]]));
-      for (const ev of evaluateHistory(pump.id, points)) {
-        const key = openAlertKey(ev);
-        if (openKeys.has(key)) continue;
-        openKeys.add(key);
-        alerts.push({
-          id: alertId(ev),
-          pumpId: ev.pumpId,
-          timestamp: ev.timestamp,
-          severity: ev.severity,
-          signal: ev.signal,
-          message: ev.message,
-          acknowledged: false,
-        });
+      for (const point of points) {
+        this.applyEvaluations(
+          pump.id,
+          point.timestamp,
+          evaluatePoint(point),
+          alerts,
+          alertsById,
+          /* emit */ false,
+        );
       }
     }
 
@@ -146,17 +149,28 @@ export class FleetStore {
 
   private nextAlertId(): string {
     this.alertCounter += 1;
-    return `live-${this.alertCounter}`;
+    return `alert-${this.alertCounter}`;
   }
 
   private emit(): void {
     for (const l of this.listeners) l();
   }
 
+  private emitAlertEvent(event: AlertEvent): void {
+    for (const l of this.alertEventListeners) l(event);
+  }
+
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  };
+
+  subscribeToAlertEvents = (listener: AlertEventListener): (() => void) => {
+    this.alertEventListeners.add(listener);
+    return () => {
+      this.alertEventListeners.delete(listener);
     };
   };
 
@@ -193,12 +207,15 @@ export class FleetStore {
   }
 
   getActiveAlerts(pumpId?: string): Alert[] {
-    return this.getAlerts(pumpId).filter((a) => !a.acknowledged);
+    return this.getAlerts(pumpId).filter((a) => a.endedAt == null);
   }
 
   acknowledgeAlert(id: string): void {
+    const target = this.state.alerts.find((a) => a.id === id);
+    if (!target || target.acknowledgedAt) return;
+    const now = this.state.now;
     const alerts = this.state.alerts.map((a) =>
-      a.id === id ? { ...a, acknowledged: true } : a,
+      a.id === id ? { ...a, acknowledgedAt: now } : a,
     );
     this.state = { ...this.state, alerts };
     this.emit();
@@ -294,8 +311,8 @@ export class FleetStore {
     if (!pump) return 'green';
     if (pump.status === 'maintenance') return 'maintenance';
     const active = this.getActiveAlerts(pumpId);
-    if (active.some((a) => a.severity === 'critical')) return 'red';
-    if (active.length > 0) return 'yellow';
+    if (active.some((a) => a.currentSeverity === 'critical')) return 'red';
+    if (active.some((a) => a.currentSeverity === 'warning')) return 'yellow';
     return 'green';
   }
 
@@ -317,14 +334,17 @@ export class FleetStore {
   tick(): void {
     const now = new Date(this.state.now.getTime() + 5000);
     const telemetry: TelemetryCache = new Map(this.state.telemetry);
-    const newAlerts: Alert[] = [];
-    const openKeys = new Set(this.getActiveAlerts().map(openAlertKey));
+    const nextAlerts = [...this.state.alerts];
+    const alertsById = new Map<string, Alert>(nextAlerts.map((a) => [a.id, a]));
+    const queuedEvents: AlertEvent[] = [];
 
     for (const pump of this.state.pumps) {
       if (pump.status === 'maintenance') continue;
       const windows = telemetry.get(pump.id);
       if (!windows) continue;
       const updatedWindows = new Map(windows);
+      let latestEval: SignalEvaluation[] | null = null;
+      let latestTimestamp: Date = now;
 
       for (const [w, points] of windows) {
         const last = points[points.length - 1];
@@ -333,32 +353,127 @@ export class FleetStore {
         const next = generateNextPoint(pump.id, last.timestamp, now, cfg.resolutionMs);
         updatedWindows.set(w, [...points.slice(1), next]);
 
-        for (const ev of evaluatePoint(pump.id, next)) {
-          const key = openAlertKey(ev);
-          if (openKeys.has(key)) continue;
-          openKeys.add(key);
-          newAlerts.push({
-            id: this.nextAlertId(),
-            pumpId: ev.pumpId,
-            timestamp: ev.timestamp,
-            severity: ev.severity,
-            signal: ev.signal,
-            message: ev.message,
-            acknowledged: false,
-          });
+        if (w === DEFAULT_WINDOW) {
+          latestEval = evaluatePoint(next);
+          latestTimestamp = next.timestamp;
         }
       }
 
       telemetry.set(pump.id, updatedWindows);
+
+      if (latestEval) {
+        this.applyEvaluations(
+          pump.id,
+          latestTimestamp,
+          latestEval,
+          nextAlerts,
+          alertsById,
+          /* emit */ true,
+          queuedEvents,
+        );
+      }
     }
 
     this.state = {
       ...this.state,
       now,
       telemetry,
-      alerts: newAlerts.length > 0 ? [...this.state.alerts, ...newAlerts] : this.state.alerts,
+      alerts: nextAlerts,
     };
     this.emit();
+    for (const event of queuedEvents) this.emitAlertEvent(event);
+  }
+
+  private applyEvaluations(
+    pumpId: string,
+    timestamp: Date,
+    evaluations: SignalEvaluation[],
+    alerts: Alert[],
+    alertsById: Map<string, Alert>,
+    emit: boolean,
+    queuedEvents?: AlertEvent[],
+  ): void {
+    let openForPump = this.openBySignal.get(pumpId);
+    if (!openForPump) {
+      openForPump = new Map();
+      this.openBySignal.set(pumpId, openForPump);
+    }
+
+    for (const ev of evaluations) {
+      const openId = openForPump.get(ev.signal);
+
+      if (ev.state === 'nominal') {
+        if (!openId) continue;
+        const existing = alertsById.get(openId);
+        if (!existing) {
+          openForPump.delete(ev.signal);
+          continue;
+        }
+        const resolved: Alert = {
+          ...existing,
+          endedAt: timestamp,
+          currentSeverity: 'nominal',
+        };
+        replaceAlert(alerts, alertsById, resolved);
+        openForPump.delete(ev.signal);
+        if (emit && queuedEvents) {
+          queuedEvents.push({ type: 'resolved', alert: resolved });
+        }
+        continue;
+      }
+
+      // ev.state is 'warning' | 'critical'
+      const direction = ev.direction!;
+      const severity: AlertSeverity = ev.state;
+
+      if (!openId) {
+        const created: Alert = {
+          id: this.nextAlertId(),
+          pumpId,
+          signal: ev.signal,
+          startedAt: timestamp,
+          peakSeverity: severity,
+          currentSeverity: severity,
+          peakValue: ev.value,
+          peakDirection: direction,
+        };
+        alerts.push(created);
+        alertsById.set(created.id, created);
+        openForPump.set(ev.signal, created.id);
+        if (emit && queuedEvents) {
+          queuedEvents.push({ type: 'opened', alert: created });
+        }
+        continue;
+      }
+
+      const existing = alertsById.get(openId);
+      if (!existing) {
+        openForPump.delete(ev.signal);
+        continue;
+      }
+
+      const escalated =
+        severityRank(severity) > severityRank(existing.peakSeverity);
+      const peakSeverity: AlertSeverity = escalated ? severity : existing.peakSeverity;
+      const peakValue = isMoreExtreme(ev.value, existing.peakValue, direction)
+        ? ev.value
+        : existing.peakValue;
+      const peakDirection = peakValue === ev.value ? direction : existing.peakDirection;
+
+      const updated: Alert = {
+        ...existing,
+        currentSeverity: severity,
+        peakSeverity,
+        peakValue,
+        peakDirection,
+        acknowledgedAt: escalated ? undefined : existing.acknowledgedAt,
+      };
+      replaceAlert(alerts, alertsById, updated);
+
+      if (escalated && emit && queuedEvents) {
+        queuedEvents.push({ type: 'escalated', alert: updated });
+      }
+    }
   }
 
   startLiveUpdates(intervalMs = 5000): void {
@@ -387,7 +502,22 @@ export class FleetStore {
       this.intervalHandle = null;
     }
     this.listeners.clear();
+    this.alertEventListeners.clear();
   }
+}
+
+function isMoreExtreme(value: number, peak: number, direction: 'high' | 'low'): boolean {
+  return direction === 'high' ? value > peak : value < peak;
+}
+
+function replaceAlert(
+  alerts: Alert[],
+  alertsById: Map<string, Alert>,
+  next: Alert,
+): void {
+  const idx = alerts.findIndex((a) => a.id === next.id);
+  if (idx >= 0) alerts[idx] = next;
+  alertsById.set(next.id, next);
 }
 
 let storeSingleton: FleetStore | null = null;

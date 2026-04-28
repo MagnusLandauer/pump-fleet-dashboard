@@ -1,6 +1,7 @@
 import { Box, useMediaQuery, useTheme } from '@mui/material';
 import { createRootRoute, Outlet } from '@tanstack/react-router';
 import { useState } from 'react';
+import { LiveAlertToaster } from '../components/alerts/LiveAlertToaster';
 import { Sidebar, SIDEBAR_WIDTH } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 
@@ -38,6 +39,7 @@ function RootLayout() {
           <Outlet />
         </Box>
       </Box>
+      <LiveAlertToaster />
     </Box>
   );
 }

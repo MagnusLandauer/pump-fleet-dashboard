@@ -3,6 +3,7 @@ import {
   AlertTitle,
   Box,
   Button,
+  Chip,
   Container,
   Dialog,
   DialogActions,
@@ -13,6 +14,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { StatusBadge } from '../components/StatusBadge';
@@ -27,16 +29,31 @@ import { SIGNAL_ORDER } from '../domain/models';
 import { useLiveTick } from '../hooks/useLiveTick';
 import { useFleetStore, useStoreSnapshot } from '../hooks/useStore';
 
+interface PumpDetailSearch {
+  from?: 'alert';
+}
+
 export const Route = createFileRoute('/pump/$id')({
   component: PumpDetail,
+  validateSearch: (search: Record<string, unknown>): PumpDetailSearch => {
+    return search.from === 'alert' ? { from: 'alert' } : {};
+  },
 });
 
 function PumpDetail() {
   useLiveTick();
   const { id } = Route.useParams();
+  const search = Route.useSearch();
   const store = useFleetStore();
   const snapshot = useStoreSnapshot();
   const navigate = useNavigate();
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate({ to: '/' });
+    }
+  };
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<WorkOrder | null>(null);
@@ -65,6 +82,19 @@ function PumpDetail() {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Stack spacing={3}>
+        {search.from === 'alert' && (
+          <Box>
+            <Chip
+              icon={<ArrowBackIcon fontSize="small" />}
+              label="Back"
+              variant="outlined"
+              clickable
+              onClick={handleBack}
+              data-testid="back-from-alert"
+              aria-label="back-from-alert"
+            />
+          </Box>
+        )}
         <Stack
           direction="row"
           useFlexGap
@@ -115,6 +145,7 @@ function PumpDetail() {
 
         <AlertList
           alerts={alerts}
+          now={snapshot.now}
           onAcknowledge={(aid) => store.acknowledgeAlert(aid)}
         />
 

@@ -9,90 +9,252 @@ import {
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMemo, useState } from 'react';
 import type { Alert, AlertSeverity } from '../../domain/models';
+import { THRESHOLDS } from '../../domain/models';
+import { formatAlertMessage } from '../../utils/alertMessage';
+import { formatDuration, formatRelativeTime } from '../../utils/format';
 
 interface AlertListProps {
   alerts: Alert[];
+  now: Date;
   onAcknowledge: (id: string) => void;
 }
 
+type StateFilter = 'active' | 'resolved' | 'all';
 type SeverityFilter = AlertSeverity | 'all';
 
 const MAX_VISIBLE = 50;
 
-export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
-  const [filter, setFilter] = useState<SeverityFilter>('all');
+const ACK_TOOLTIP =
+  'Mark as seen — silences future toasts for this incident, but it stays here until the metric returns to normal.';
+
+function isResolved(alert: Alert): boolean {
+  return alert.endedAt != null;
+}
+
+function severityRank(s: AlertSeverity): number {
+  return s === 'critical' ? 2 : 1;
+}
+
+function compareIncidents(a: Alert, b: Alert): number {
+  const aResolved = isResolved(a);
+  const bResolved = isResolved(b);
+  if (aResolved !== bResolved) return aResolved ? 1 : -1;
+  if (!aResolved) {
+    const sevDiff =
+      severityRank(
+        b.currentSeverity === 'nominal' ? 'warning' : b.currentSeverity,
+      ) -
+      severityRank(
+        a.currentSeverity === 'nominal' ? 'warning' : a.currentSeverity,
+      );
+    if (sevDiff !== 0) return sevDiff;
+    return b.startedAt.getTime() - a.startedAt.getTime();
+  }
+  return b.endedAt!.getTime() - a.endedAt!.getTime();
+}
+
+function stateLabel(alert: Alert): string {
+  if (isResolved(alert)) return 'Resolved';
+  return alert.currentSeverity === 'critical'
+    ? 'Active · Critical'
+    : 'Active · Warning';
+}
+
+function stateChipProps(alert: Alert): {
+  color: 'error' | 'warning' | 'default';
+  variant: 'filled' | 'outlined';
+} {
+  if (isResolved(alert)) return { color: 'default', variant: 'outlined' };
+  if (alert.currentSeverity === 'critical')
+    return { color: 'error', variant: 'filled' };
+  return { color: 'warning', variant: 'filled' };
+}
+
+export function AlertList({ alerts, now, onAcknowledge }: AlertListProps) {
+  const [stateFilter, setStateFilter] = useState<StateFilter>('active');
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all');
 
   const { visible, hiddenCount } = useMemo(() => {
-    const filtered = filter === 'all' ? alerts : alerts.filter((a) => a.severity === filter);
-    const sorted = [...filtered].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    let filtered = alerts;
+    if (stateFilter === 'active')
+      filtered = filtered.filter((a) => !isResolved(a));
+    else if (stateFilter === 'resolved') filtered = filtered.filter(isResolved);
+    if (severityFilter !== 'all') {
+      filtered = filtered.filter((a) => a.peakSeverity === severityFilter);
+    }
+    const sorted = [...filtered].sort(compareIncidents);
     return {
       visible: sorted.slice(0, MAX_VISIBLE),
       hiddenCount: Math.max(0, sorted.length - MAX_VISIBLE),
     };
-  }, [alerts, filter]);
+  }, [alerts, stateFilter, severityFilter]);
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Stack
+        direction="row"
+        sx={{
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 1,
+          flexWrap: 'wrap',
+          gap: 1,
+        }}
+      >
         <Typography variant="h6">Alerts</Typography>
-        <TextField
-          select
-          size="small"
-          label="Severity"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as SeverityFilter)}
-          sx={{ minWidth: 140 }}
-        >
-          <MenuItem value="all">All</MenuItem>
-          <MenuItem value="warning">Warning</MenuItem>
-          <MenuItem value="critical">Critical</MenuItem>
-        </TextField>
+        <Stack direction="row" spacing={1}>
+          <TextField
+            select
+            size="small"
+            label="State"
+            value={stateFilter}
+            onChange={(e) => setStateFilter(e.target.value as StateFilter)}
+            sx={{ minWidth: 140 }}
+          >
+            <MenuItem value="active">Active</MenuItem>
+            <MenuItem value="resolved">Resolved</MenuItem>
+            <MenuItem value="all">All</MenuItem>
+          </TextField>
+          <TextField
+            select
+            size="small"
+            label="Severity"
+            value={severityFilter}
+            onChange={(e) =>
+              setSeverityFilter(e.target.value as SeverityFilter)
+            }
+            sx={{ minWidth: 140 }}
+          >
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="warning">Warning</MenuItem>
+            <MenuItem value="critical">Critical</MenuItem>
+          </TextField>
+        </Stack>
       </Stack>
       {visible.length === 0 ? (
         <Box sx={{ py: 2, color: 'text.secondary' }}>
-          <Typography variant="body2">No alerts to show.</Typography>
+          <Typography variant="body2">
+            {stateFilter === 'active'
+              ? 'No active alerts.'
+              : 'No alerts to show.'}
+          </Typography>
         </Box>
       ) : (
         <>
-        <List dense disablePadding>
-          {visible.map((a) => (
-            <ListItem
-              key={a.id}
-              divider
-              secondaryAction={
-                !a.acknowledged && (
-                  <Button size="small" onClick={() => onAcknowledge(a.id)} aria-label={`acknowledge-${a.id}`}>
-                    Acknowledge
-                  </Button>
-                )
-              }
+          <List dense disablePadding>
+            {visible.map((a, i) => {
+              const resolved = isResolved(a);
+              const acknowledged = a.acknowledgedAt != null;
+              const showAckButton = !resolved && !acknowledged;
+              const peakedDownward =
+                !resolved &&
+                a.peakSeverity === 'critical' &&
+                a.currentSeverity === 'warning';
+              const durationMs = resolved
+                ? a.endedAt!.getTime() - a.startedAt.getTime()
+                : now.getTime() - a.startedAt.getTime();
+              const startedAbsolute = a.startedAt.toLocaleString();
+              const stateProps = stateChipProps(a);
+
+              return (
+                <ListItem
+                  key={a.id}
+                  divider={i < visible.length - 1}
+                  alignItems="flex-start"
+                  data-testid={`alert-${a.id}`}
+                  secondaryAction={
+                    showAckButton ? (
+                      <Tooltip title={ACK_TOOLTIP} placement="left">
+                        <Button
+                          size="small"
+                          onClick={() => onAcknowledge(a.id)}
+                          aria-label={`acknowledge-${a.id}`}
+                        >
+                          Acknowledge
+                        </Button>
+                      </Tooltip>
+                    ) : null
+                  }
+                >
+                  <ListItemText
+                    primary={
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          rowGap: 0.5,
+                        }}
+                      >
+                        <Chip
+                          size="small"
+                          color={stateProps.color}
+                          variant={stateProps.variant}
+                          label={stateLabel(a)}
+                        />
+                        {peakedDownward && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            label="Peaked at: critical"
+                          />
+                        )}
+                        {acknowledged && !resolved && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label="Acknowledged"
+                          />
+                        )}
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {THRESHOLDS[a.signal].label}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatAlertMessage(a)}
+                        </Typography>
+                      </Stack>
+                    }
+                    secondary={
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        component="span"
+                        sx={{ mt: 0.5, color: 'text.secondary' }}
+                      >
+                        <Tooltip title={startedAbsolute}>
+                          <span>
+                            Started {formatRelativeTime(a.startedAt, now)}
+                          </span>
+                        </Tooltip>
+                        <span>
+                          {resolved ? 'Lasted' : 'Running'}{' '}
+                          {formatDuration(Math.max(0, durationMs))}
+                        </span>
+                      </Stack>
+                    }
+                    slotProps={{ secondary: { component: 'div' } }}
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
+          {hiddenCount > 0 && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 1 }}
             >
-              <ListItemText
-                primary={
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                    <Chip
-                      size="small"
-                      color={a.severity === 'critical' ? 'error' : 'warning'}
-                      label={a.severity}
-                    />
-                    {a.acknowledged && <Chip size="small" variant="outlined" label="ack" />}
-                    <span>{a.message}</span>
-                  </Stack>
-                }
-                secondary={a.timestamp.toLocaleString()}
-              />
-            </ListItem>
-          ))}
-        </List>
-        {hiddenCount > 0 && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Showing {visible.length} most recent — {hiddenCount} older {hiddenCount === 1 ? 'alert' : 'alerts'} not shown.
-          </Typography>
-        )}
+              Showing {visible.length} most recent — {hiddenCount} older{' '}
+              {hiddenCount === 1 ? 'incident' : 'incidents'} not shown.
+            </Typography>
+          )}
         </>
       )}
     </Paper>

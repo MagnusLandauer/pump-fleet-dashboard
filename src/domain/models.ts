@@ -29,15 +29,25 @@ export interface TelemetryPoint {
 
 export type AlertSeverity = 'warning' | 'critical';
 
+export type AlertState = AlertSeverity | 'nominal';
+
 export interface Alert {
   id: string;
   pumpId: string;
-  timestamp: Date;
-  severity: AlertSeverity;
   signal: TelemetrySignal;
-  message: string;
-  acknowledged: boolean;
+  startedAt: Date;
+  endedAt?: Date;
+  peakSeverity: AlertSeverity;
+  currentSeverity: AlertState;
+  acknowledgedAt?: Date;
+  peakValue: number;
+  peakDirection: 'high' | 'low';
 }
+
+export type AlertEvent =
+  | { type: 'opened'; alert: Alert }
+  | { type: 'escalated'; alert: Alert }
+  | { type: 'resolved'; alert: Alert };
 
 export type WorkOrderType = 'corrective' | 'planned';
 export type WorkOrderStatus = 'open' | 'in_progress' | 'completed' | 'overdue';

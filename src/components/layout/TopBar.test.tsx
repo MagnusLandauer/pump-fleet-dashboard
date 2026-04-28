@@ -58,10 +58,12 @@ describe('TopBar', () => {
     expect(title.textContent).toBe('Fleet Overview');
   });
 
-  it('shows the pump detail title on a pump route', async () => {
+  it('omits the page title on a pump route', async () => {
     renderTopBar({ initialPath: '/pump/pump-001' });
-    const title = await screen.findByTestId('page-title');
-    expect(title.textContent).toBe('Pump Detail');
+    // The pump page already shows the pump name in the sidebar and as its
+    // own H1 — the TopBar title would just be a third copy.
+    await screen.findByLabelText('live status');
+    expect(screen.queryByTestId('page-title')).toBeNull();
   });
 
   it('renders a live indicator with a clock', async () => {

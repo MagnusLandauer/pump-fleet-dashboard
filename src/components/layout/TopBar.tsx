@@ -8,8 +8,10 @@ interface TopBarProps {
   showMenuButton: boolean;
 }
 
-function pageTitleFor(pathname: string): string {
-  if (pathname.startsWith('/pump/')) return 'Pump Detail';
+function pageTitleFor(pathname: string): string | null {
+  // Pump detail pages already show the pump name as their page heading and
+  // in the sidebar — repeating it here is noise.
+  if (pathname.startsWith('/pump/')) return null;
   return 'Fleet Overview';
 }
 
@@ -35,14 +37,18 @@ export function TopBar({ onMenuClick, showMenuButton }: TopBarProps) {
             <MenuOutlined />
           </IconButton>
         )}
-        <Typography
-          variant="h6"
-          component="div"
-          data-testid="page-title"
-          sx={{ flexGrow: 1, fontWeight: 600 }}
-        >
-          {title}
-        </Typography>
+        {title ? (
+          <Typography
+            variant="h6"
+            component="div"
+            data-testid="page-title"
+            sx={{ flexGrow: 1, fontWeight: 600 }}
+          >
+            {title}
+          </Typography>
+        ) : (
+          <Box sx={{ flexGrow: 1 }} />
+        )}
         <Stack
           direction="row"
           spacing={1}

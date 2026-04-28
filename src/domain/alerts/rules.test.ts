@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { TelemetryPoint } from '../models';
-import { alertId, evaluateHistory, evaluatePoint } from './rules';
+import type { TelemetryPoint, TelemetrySignal } from '../models';
+import { evaluatePoint, evaluateSignal } from './rules';
 
 function point(overrides: Partial<TelemetryPoint> = {}): TelemetryPoint {
   return {
@@ -15,55 +15,55 @@ function point(overrides: Partial<TelemetryPoint> = {}): TelemetryPoint {
   };
 }
 
+function findEval(
+  evals: ReturnType<typeof evaluatePoint>,
+  signal: TelemetrySignal,
+) {
+  return evals.find((e) => e.signal === signal)!;
+}
+
+describe('evaluateSignal', () => {
+  it('returns nominal when the value is within range', () => {
+    const r = evaluateSignal(point(), 'vibration');
+    expect(r.state).toEqual('nominal');
+    expect(r.direction).toBeNull();
+  });
+
+  it('returns critical with high direction when above critical threshold', () => {
+    const r = evaluateSignal(point({ vibration: 6 }), 'vibration');
+    expect(r.state).toEqual('critical');
+    expect(r.direction).toEqual('high');
+    expect(r.value).toEqual(6);
+  });
+
+  it('returns warning when in the warning band', () => {
+    const r = evaluateSignal(point({ temperature: 80 }), 'temperature');
+    expect(r.state).toEqual('warning');
+    expect(r.direction).toEqual('high');
+  });
+
+  it('detects below-threshold critical with low direction', () => {
+    const r = evaluateSignal(point({ outletPressure: 8 }), 'outletPressure');
+    expect(r.state).toEqual('critical');
+    expect(r.direction).toEqual('low');
+  });
+});
+
 describe('evaluatePoint', () => {
-  it('produces no alerts when all signals are within range', () => {
-    expect(evaluatePoint('pump-001', point())).toEqual([]);
+  it('returns one entry per signal', () => {
+    const evals = evaluatePoint(point());
+    expect(evals).toHaveLength(6);
   });
 
-  it('produces a critical alert when vibration is above critical threshold', () => {
-    const alerts = evaluatePoint('pump-001', point({ vibration: 6 }));
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0].severity).toEqual('critical');
-    expect(alerts[0].signal).toEqual('vibration');
+  it('marks all-nominal points', () => {
+    const evals = evaluatePoint(point());
+    expect(evals.every((e) => e.state === 'nominal')).toBe(true);
   });
 
-  it('produces a warning when temperature is in the warning band', () => {
-    const alerts = evaluatePoint('pump-001', point({ temperature: 80 }));
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0].severity).toEqual('warning');
-  });
-
-  it('produces a critical alert when outlet pressure drops below critical low', () => {
-    const alerts = evaluatePoint('pump-001', point({ outletPressure: 8 }));
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0].severity).toEqual('critical');
-    expect(alerts[0].signal).toEqual('outletPressure');
-    expect(alerts[0].message).toMatch(/below/);
-  });
-
-  it('produces multiple alerts when several signals are out of range', () => {
-    const alerts = evaluatePoint('pump-001', point({ vibration: 6, temperature: 90 }));
-    expect(alerts).toHaveLength(2);
-  });
-});
-
-describe('evaluateHistory', () => {
-  it('aggregates alerts from each point', () => {
-    const history = [
-      point({ vibration: 6 }),
-      point({ vibration: 2 }),
-      point({ vibration: 6 }),
-    ];
-    const all = evaluateHistory('pump-001', history);
-    expect(all).toHaveLength(2);
-  });
-});
-
-describe('alertId', () => {
-  it('produces stable ids for the same input', () => {
-    const ts = new Date('2026-04-27T12:00:00Z');
-    const a = alertId({ pumpId: 'pump-001', signal: 'vibration', severity: 'warning', timestamp: ts });
-    const b = alertId({ pumpId: 'pump-001', signal: 'vibration', severity: 'warning', timestamp: ts });
-    expect(a).toEqual(b);
+  it('reflects multiple out-of-range signals in their entries', () => {
+    const evals = evaluatePoint(point({ vibration: 6, temperature: 90 }));
+    expect(findEval(evals, 'vibration').state).toEqual('critical');
+    expect(findEval(evals, 'temperature').state).toEqual('critical');
+    expect(findEval(evals, 'rotationSpeed').state).toEqual('nominal');
   });
 });

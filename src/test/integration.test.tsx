@@ -1,8 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resetStoreForTest } from '../domain/store';
+import { getStore, resetStoreForTest } from '../domain/store';
+import type { AlertEvent } from '../domain/models';
 import { routeTree } from '../routeTree.gen';
 
 const NOW = new Date('2026-04-27T12:00:00Z');
@@ -118,5 +119,40 @@ describe('Fleet integration', () => {
     renderApp(['/pump/pump-001']);
     await screen.findByRole('heading', { level: 1, name: 'Alpha Centrifuge' });
     expect(screen.queryByTestId('maintenance-banner')).toBeNull();
+  });
+
+  it('surfaces a live toast and routes to the pump with a back chip when View pump is clicked', async () => {
+    renderApp();
+    await screen.findByText(/fleet overview/i);
+
+    // Synthesize an opened-alert event on the store. The toaster, mounted in
+    // the root layout, listens on subscribeToAlertEvents.
+    const store = getStore() as unknown as {
+      alertEventListeners: Set<(e: AlertEvent) => void>;
+    };
+    act(() => {
+      const event: AlertEvent = {
+        type: 'opened',
+        alert: {
+          id: 'integration-toast',
+          pumpId: 'pump-003',
+          signal: 'vibration',
+          startedAt: NOW,
+          peakSeverity: 'critical',
+          currentSeverity: 'critical',
+          peakValue: 5.5,
+          peakDirection: 'high',
+        },
+      };
+      for (const l of store.alertEventListeners) l(event);
+    });
+
+    const toast = await screen.findByTestId('live-toast-integration-toast');
+    await userEvent.click(within(toast).getByRole('button', { name: 'View pump' }));
+
+    expect(await screen.findByTestId('back-from-alert')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Charlie Injector' }),
+    ).toBeTruthy();
   });
 });
