@@ -10,6 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 import DashboardOutlined from '@mui/icons-material/DashboardOutlined';
+import MonitorHeartOutlined from '@mui/icons-material/MonitorHeartOutlined';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import type { DerivedStatus } from '../../domain/models';
@@ -76,8 +77,14 @@ function Brand() {
           borderRadius: 2,
           bgcolor: 'primary.main',
           boxShadow: (t) => `0 0 0 1px ${t.palette.divider}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'primary.contrastText',
         }}
-      />
+      >
+        <MonitorHeartOutlined sx={{ fontSize: 18 }} />
+      </Box>
       <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
         Pump Fleet
       </Typography>
