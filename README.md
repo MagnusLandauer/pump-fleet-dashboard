@@ -2,7 +2,7 @@
 
 A frontend-only dashboard for monitoring a fleet of oil-and-gas pumps. All data is synthetic — generated client-side from a deterministic seed — so the app runs as a pure static site with no backend.
 
-Live demo: <https://landauer.github.io/pump-fleet-dashboard/> (after deploy)
+Live demo: <https://magnuslandauer.github.io/pump-fleet-dashboard/>
 
 ## Quick start
 
@@ -61,4 +61,6 @@ npm run test:coverage    # v8 coverage with 80 % thresholds enforced in vite.con
 
 ## Deploy (GitHub Pages)
 
-`vite.config.ts` sets `base: '/pump-fleet-dashboard/'`, so `npm run build` produces a `dist/` ready to publish at `https://<user>.github.io/pump-fleet-dashboard/`. Push the built `dist/` (or wire up a GitHub Actions workflow that runs `npm ci && npm run build` and deploys to the `gh-pages` branch).
+A GitHub Actions workflow at `.github/workflows/deploy.yml` builds and deploys on every push to `master`. To enable: go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. The site publishes at `https://<user>.github.io/pump-fleet-dashboard/` (the base path is set in `vite.config.ts`).
+
+For a manual deploy: `npm run build` produces the static site in `dist/`.
